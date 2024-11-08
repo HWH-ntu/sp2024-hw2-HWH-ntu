@@ -86,7 +86,7 @@ void print_final_graduate(){
     fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
 }
 
-int task_parsor(const char *task_type) {
+int task_parsor(char* line, char* task_type, char* argmnt1, char* argmnt2, int* item_read) {
     /*
     41: Implementation 4.1 Meet <parent_friend_name> <child_friend_info>
     42: Implementation 4.2 Check <parent_friend_name>
@@ -94,11 +94,16 @@ int task_parsor(const char *task_type) {
     44: Implementation 4.4 Graduate <friend_name>
     45: Implementation 4.5 Compare <friend_name> <number>
     */
+    // Parse the line into task_type, argmnt1, and argmnt2
+    *item_read = sscanf(line, "%s %s %s", task_type, argmnt1, argmnt2);
+
+    // Determine task number based on task_type
     if (strcmp(task_type, "Meet") == 0) return 41;
     if (strcmp(task_type, "Check") == 0) return 42;
     if (strcmp(task_type, "Adopt") == 0) return 43;
     if (strcmp(task_type, "Graduate") == 0) return 44;
     if (strcmp(task_type, "Compare") == 0) return 45;
+    
     return -1; // Return -1 if task is not recognized
 }
 
@@ -124,7 +129,7 @@ int main(int argc, char *argv[]) {
     char task_type[35];    // To hold the task type
     char argmnt1[15];      // To hold the first argument
     char argmnt2[15];      // To hold the second argument
-
+    int item_read;
 
     // Read each line from STDIN until the end of input
     while (fgets(line, sizeof(line), stdin) != NULL) {
@@ -133,27 +138,23 @@ int main(int argc, char *argv[]) {
         memset(argmnt1, 0, sizeof(argmnt1));
         memset(argmnt2, 0, sizeof(argmnt2));
 
-        // Parse the line into task_type, argmnt1, and argmnt2
-        // sscanf helps extract parts of a string based on format
-        int fields_read = sscanf(line, "%s %s %s", task_type, argmnt1, argmnt2);
-
         // Determine which task is assigned based on task_type
-        int task_no = task_parsor(task_type);
+        int task_no = task_parsor(line, task_type, argmnt1, argmnt2, &item_read);
 
         // Handle each task based on task_no and number of arguments read
-        if (task_no == 41 && fields_read == 3) {
+        if (task_no == 41 && item_read == 3) { // Meet
             //printf("Executing 'Meet' with arguments: %s, %s\n", argmnt1, argmnt2);
             
-        } else if (task_no == 42 && fields_read == 2) {
+        } else if (task_no == 42 && item_read == 2) { // Check
             //printf("Executing 'Check' with argument: %s\n", argmnt1);
             
-        } else if (task_no == 43 && fields_read == 3) {
+        } else if (task_no == 43 && item_read == 3) { // Adopt
             //printf("Executing 'Adopt' with arguments: %s, %s\n", argmnt1, argmnt2);
             
-        } else if (task_no == 44 && fields_read == 2) {
+        } else if (task_no == 44 && item_read == 2) { // Graduate
             //printf("Executing 'Graduate' with argument: %s\n", argmnt1);
             
-        } else if (task_no == 45 && fields_read == 3) {
+        } else if (task_no == 45 && item_read == 3) { // Compare
             //printf("Executing 'Compare' with arguments: %s, %s\n", argmnt1, argmnt2);
             
         } else {
