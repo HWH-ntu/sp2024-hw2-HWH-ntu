@@ -39,19 +39,21 @@ please remember :
 
 // somethings I recommend leaving here, but you may delete as you please
 static char root[MAX_FRIEND_INFO_LEN] = "Not_Tako";     // root of tree
-static char friend_info[MAX_FRIEND_INFO_LEN];   // current process info
-static char friend_name[MAX_FRIEND_NAME_LEN];   // current process name
+// static char friend_info[MAX_FRIEND_INFO_LEN];   // current process info
+static char current_info[MAX_FRIEND_INFO_LEN];
+// static char friend_name[MAX_FRIEND_NAME_LEN];   // current process name
+static char current_name[MAX_FRIEND_NAME_LEN];   // current process name
 static int friend_value;    // current process value
-FILE* read_fp = NULL;
+//FILE* read_fp = NULL;
 
 // Is Root of tree
 static inline bool is_Not_Tako() {
-    return (strcmp(friend_name, root) == 0);
+    return (strcmp(current_name, root) == 0);
 }
 
 // a bunch of prints for you
-void print_direct_meet(char *friend_name) {
-    fprintf(stdout, "Not_Tako has met %s by himself\n", friend_name);
+void print_direct_meet(char *current_name) {
+    fprintf(stdout, "Not_Tako has met %s by himself\n", current_name);
 }
 
 void print_indirect_meet(char *parent_friend_name, char *child_friend_name) {
@@ -74,12 +76,12 @@ void print_fail_adopt(char *parent_friend_name, char *child_friend_name) {
     fprintf(stdout, "%s is a descendant of %s\n", parent_friend_name, child_friend_name);
 }
 
-void print_compare_gtr(char *friend_name){
-    fprintf(stdout, "Not_Tako is still friends with %s\n", friend_name);
+void print_compare_gtr(char *current_name){
+    fprintf(stdout, "Not_Tako is still friends with %s\n", current_name);
 }
 
-void print_compare_leq(char *friend_name){
-    fprintf(stdout, "%s is dead to Not_Tako\n", friend_name);
+void print_compare_leq(char *current_name){
+    fprintf(stdout, "%s is dead to Not_Tako\n", current_name);
 }
 
 void print_final_graduate(){
@@ -91,8 +93,8 @@ int task_parsor(char* line, char* task_type, char* argmnt1, char* argmnt2, int* 
     41: Implementation 4.1 Meet <parent_friend_name> <child_friend_info>
     42: Implementation 4.2 Check <parent_friend_name>
     43: Implementation 4.3 Adopt <parent_friend_name> <child_friend_name>
-    44: Implementation 4.4 Graduate <friend_name>
-    45: Implementation 4.5 Compare <friend_name> <number>
+    44: Implementation 4.4 Graduate <current_name>
+    45: Implementation 4.5 Compare <current_name> <number>
     */
     // Parse the line into task_type, argmnt1, and argmnt2
     *item_read = sscanf(line, "%s %s %s", task_type, argmnt1, argmnt2);
@@ -138,19 +140,47 @@ please do above 2 functions to save some time
 
 int main(int argc, char *argv[]) {
     char line[100];        // Buffer to hold each line read from stdin
-    char task_type[35];    // To hold the task type
-    char argmnt1[15];      // To hold the first argument
-    char argmnt2[15];      // To hold the second argument
-    int item_read;
-    char meet_child_name[MAX_FRIEND_NAME_LEN];
-    int meet_child_value;
+    char child_name[MAX_FRIEND_NAME_LEN];
+    int child_value;
+    FILE* read_fp;
+    FILE* write_fp;
+
+    pid_t process_pid = getpid(); // you might need this when using fork()
+    if (argc != 2) {
+        fprintf(stderr, "Usage: ./friend [current_info]\n");
+        return 0;
+    }
+    setvbuf(stdout, NULL, _IONBF, 0); // fflush() prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for other friends against their parents
+    
+    // put argument one into current_info
+    strncpy(current_info, argv[1], MAX_FRIEND_INFO_LEN); //argv[1] 存在 friend info
+    
+    //Identification Confirmation
+    if(strcmp(argv[1], root) == 0){
+        // is Not_Tako
+        strncpy(current_name, current_info, MAX_FRIEND_NAME_LEN);      // put name into friend_nae
+        current_name[MAX_FRIEND_NAME_LEN - 1] = '\0';        // in case strcmp messes with you
+        read_fp = stdin;        // takes commands from stdin
+        friend_value = 100;     // Not_Tako adopting nodes will not mod their values
+    }
+    else{
+        // is other friends
+        // extract name and value from info
+        meet_child_parsor(argv[1], child_name, &child_value);
+        strncpy(current_name, child_name, MAX_FRIEND_NAME_LEN);
+        read_fp = fdopen(PARENT_READ_FD, "r"); // #define PARENT_READ_FD 3
+        write_fp = fdopen(PARENT_WRITE_FD, "w"); // #define PARENT_WRITE_FD 4
+        friend_value = child_value;
+    }
 
     // Read each line from STDIN until the end of input
     while (fgets(line, sizeof(line), stdin) != NULL) {
-        // Clear previous arguments
-        memset(task_type, 0, sizeof(task_type));
-        memset(argmnt1, 0, sizeof(argmnt1));
-        memset(argmnt2, 0, sizeof(argmnt2));
+        char task_type[35] = {0};    // To hold the task type
+        char argmnt1[15] = {0};      // To hold the first argument
+        char argmnt2[15] = {0};      // To hold the second argument
+        int item_read;
+        char meet_child_name[MAX_FRIEND_NAME_LEN] = {0};
+        int meet_child_value;
 
         // Determine which task is assigned based on task_type
         int task_no = task_parsor(line, task_type, argmnt1, argmnt2, &item_read);
@@ -159,11 +189,12 @@ int main(int argc, char *argv[]) {
         if (task_no == 41 && item_read == 3) { // Meet
             //printf("Executing 'Meet' with arguments: %s, %s\n", argmnt1, argmnt2);
             // Call the parser to split `argmnt2` into `meet_child_name` and `meet_child_value`
-            // if (meet_child_parsor(argmnt2, meet_child_name, &meet_child_value) == 0) {
-            //     printf("Child Name: %s, Child Value: %d\n", meet_child_name, meet_child_value);
-            // } else {
-            //     printf("Error parsing child name and value.\n");
-            // }
+            if (meet_child_parsor(argmnt2, meet_child_name, &meet_child_value) == 0) {
+                printf("Child Name: %s, Child Value: %d\n", meet_child_name, meet_child_value);
+            } else {
+                printf("Error parsing child name and value.\n");
+            }
+
             
         } else if (task_no == 42 && item_read == 2) { // Check
             //printf("Executing 'Check' with argument: %s\n", argmnt1);
@@ -180,33 +211,6 @@ int main(int argc, char *argv[]) {
         } else {
             //printf("Invalid task or incorrect number of arguments: %s", line);
         }
-    }
-
-    pid_t process_pid = getpid(); // you might need this when using fork()
-    if (argc != 2) {
-        fprintf(stderr, "Usage: ./friend [friend_info]\n");
-        return 0;
-    }
-    setvbuf(stdout, NULL, _IONBF, 0); // fflush() prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for other friends against their parents
-    
-
-    
-
-    // put argument one into friend_info
-    strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN); //argv[1] 存在 friend info
-    
-    if(strcmp(argv[1], root) == 0){
-        // is Not_Tako
-        strncpy(friend_name, friend_info,MAX_FRIEND_NAME_LEN);      // put name into friend_nae
-        friend_name[MAX_FRIEND_NAME_LEN - 1] = '\0';        // in case strcmp messes with you
-        read_fp = stdin;        // takes commands from stdin
-        friend_value = 100;     // Not_Tako adopting nodes will not mod their values
-    }
-    else{
-        // is other friends
-        // extract name and value from info
-        // where do you read from?
-        // anything else you have to do before you start taking commands?
     }
 
     //TODO:
@@ -268,7 +272,7 @@ int main(int argc, char *argv[]) {
     }
     else{
         there's an error, we only have valid commmands in the test cases
-        fprintf(stderr, "%s received error input : %s\n", friend_name, full_cmd); // use this to print out what you received
+        fprintf(stderr, "%s received error input : %s\n", current_name, full_cmd); // use this to print out what you received
     }
     */
    
