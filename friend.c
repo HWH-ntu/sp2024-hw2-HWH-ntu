@@ -86,6 +86,22 @@ void print_final_graduate(){
     fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
 }
 
+int task_parsor(const char *task_type) {
+    /*
+    41: Implementation 4.1 Meet <parent_friend_name> <child_friend_info>
+    42: Implementation 4.2 Check <parent_friend_name>
+    43: Implementation 4.3 Adopt <parent_friend_name> <child_friend_name>
+    44: Implementation 4.4 Graduate <friend_name>
+    45: Implementation 4.5 Compare <friend_name> <number>
+    */
+    if (strcmp(task_type, "Meet") == 0) return 41;
+    if (strcmp(task_type, "Check") == 0) return 42;
+    if (strcmp(task_type, "Adopt") == 0) return 43;
+    if (strcmp(task_type, "Graduate") == 0) return 44;
+    if (strcmp(task_type, "Compare") == 0) return 45;
+    return -1; // Return -1 if task is not recognized
+}
+
 /* terminate child pseudo code
 void clean_child(){
     close(child read_fd);
@@ -104,16 +120,59 @@ please do above 2 functions to save some time
 */
 
 int main(int argc, char *argv[]) {
-    // Hi! Welcome to SP Homework 2, I hope you have fun
+    char line[100];        // Buffer to hold each line read from stdin
+    char task_type[35];    // To hold the task type
+    char argmnt1[15];      // To hold the first argument
+    char argmnt2[15];      // To hold the second argument
+
+
+    // Read each line from STDIN until the end of input
+    while (fgets(line, sizeof(line), stdin) != NULL) {
+        // Clear previous arguments
+        memset(task_type, 0, sizeof(task_type));
+        memset(argmnt1, 0, sizeof(argmnt1));
+        memset(argmnt2, 0, sizeof(argmnt2));
+
+        // Parse the line into task_type, argmnt1, and argmnt2
+        // sscanf helps extract parts of a string based on format
+        int fields_read = sscanf(line, "%s %s %s", task_type, argmnt1, argmnt2);
+
+        // Determine which task is assigned based on task_type
+        int task_no = task_parsor(task_type);
+
+        // Handle each task based on task_no and number of arguments read
+        if (task_no == 41 && fields_read == 3) {
+            //printf("Executing 'Meet' with arguments: %s, %s\n", argmnt1, argmnt2);
+            
+        } else if (task_no == 42 && fields_read == 2) {
+            //printf("Executing 'Check' with argument: %s\n", argmnt1);
+            
+        } else if (task_no == 43 && fields_read == 3) {
+            //printf("Executing 'Adopt' with arguments: %s, %s\n", argmnt1, argmnt2);
+            
+        } else if (task_no == 44 && fields_read == 2) {
+            //printf("Executing 'Graduate' with argument: %s\n", argmnt1);
+            
+        } else if (task_no == 45 && fields_read == 3) {
+            //printf("Executing 'Compare' with arguments: %s, %s\n", argmnt1, argmnt2);
+            
+        } else {
+            //printf("Invalid task or incorrect number of arguments: %s", line);
+        }
+    }
+
     pid_t process_pid = getpid(); // you might need this when using fork()
     if (argc != 2) {
         fprintf(stderr, "Usage: ./friend [friend_info]\n");
         return 0;
     }
-    setvbuf(stdout, NULL, _IONBF, 0); // prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for other friends against their parents
+    setvbuf(stdout, NULL, _IONBF, 0); // fflush() prevent buffered I/O, equivalent to fflush() after each stdout, study this as you may need to do it for other friends against their parents
     
+
+    
+
     // put argument one into friend_info
-    strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN);
+    strncpy(friend_info, argv[1], MAX_FRIEND_INFO_LEN); //argv[1] 存在 friend info
     
     if(strcmp(argv[1], root) == 0){
         // is Not_Tako
@@ -191,6 +250,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "%s received error input : %s\n", friend_name, full_cmd); // use this to print out what you received
     }
     */
+   
 
    // final print, please leave this in, it may bepart of the test case output
     if(is_Not_Tako()){
