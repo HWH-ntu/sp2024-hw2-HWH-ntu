@@ -106,6 +106,18 @@ int task_parsor(char* line, char* task_type, char* argmnt1, char* argmnt2, int* 
     
     return -1; // Return -1 if task is not recognized
 }
+// Parses `argmnt2` into `meet_child_name` and `meet_child_value`
+int meet_child_parsor(char* argmnt2, char* meet_child_name, int* meet_child_value) {
+    char child_value[10];
+    int token_read = sscanf(argmnt2, "%[^_]_%s", meet_child_name, child_value);
+    
+    if (token_read != 2) {
+        return -1; // Parsing failed
+    }
+
+    *meet_child_value = atoi(child_value); // Convert child_value string to integer
+    return 0; // Success
+}
 
 /* terminate child pseudo code
 void clean_child(){
@@ -130,6 +142,8 @@ int main(int argc, char *argv[]) {
     char argmnt1[15];      // To hold the first argument
     char argmnt2[15];      // To hold the second argument
     int item_read;
+    char meet_child_name[MAX_FRIEND_NAME_LEN];
+    int meet_child_value;
 
     // Read each line from STDIN until the end of input
     while (fgets(line, sizeof(line), stdin) != NULL) {
@@ -144,6 +158,12 @@ int main(int argc, char *argv[]) {
         // Handle each task based on task_no and number of arguments read
         if (task_no == 41 && item_read == 3) { // Meet
             //printf("Executing 'Meet' with arguments: %s, %s\n", argmnt1, argmnt2);
+            // Call the parser to split `argmnt2` into `meet_child_name` and `meet_child_value`
+            // if (meet_child_parsor(argmnt2, meet_child_name, &meet_child_value) == 0) {
+            //     printf("Child Name: %s, Child Value: %d\n", meet_child_name, meet_child_value);
+            // } else {
+            //     printf("Error parsing child name and value.\n");
+            // }
             
         } else if (task_no == 42 && item_read == 2) { // Check
             //printf("Executing 'Check' with argument: %s\n", argmnt1);
