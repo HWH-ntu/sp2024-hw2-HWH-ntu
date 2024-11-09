@@ -2,5 +2,5 @@ all: friend
 friend: friend.c hw2.h
 	gcc friend.c -o friend
 clean:
-	rm -v friend
+	rm -vf friend
 
