@@ -45,6 +45,7 @@ static char current_info[MAX_FRIEND_INFO_LEN];
 static char current_name[MAX_FRIEND_NAME_LEN];   // current process name
 static int friend_value;    // current process value
 //FILE* read_fp = NULL;
+static char child_process_ok_msg[43] = "Child writes to parent: Child process OK!\n";
 
 // Is Root of tree
 static inline bool is_Not_Tako() {
@@ -121,6 +122,116 @@ int meet_child_parsor(char* argmnt2, char* meet_child_name, int* meet_child_valu
     return 0; // Success
 }
 
+int Meet(char *parent_name, friend* friends, int* next_empty_pos, char* argmnt2) {//argmnt2 is child_info now
+    int childRD_parentWR[2];
+    int childWR_parentRD[2];
+    char child_name[MAX_FRIEND_NAME_LEN] = {0};
+    int child_value;
+
+    // Create pipes for communication
+    if (pipe(childRD_parentWR) == -1) {
+        perror("pipe to child failed");
+        return -1;
+    }
+    // Set FD_CLOEXEC for childRD_parentWR pipe
+    fcntl(childRD_parentWR[0], F_SETFD, FD_CLOEXEC);
+    fcntl(childRD_parentWR[1], F_SETFD, FD_CLOEXEC);
+
+    if (pipe(childWR_parentRD) == -1) {
+        perror("pipe to parent failed");
+        close(childRD_parentWR[0]);
+        close(childRD_parentWR[1]);
+        return -1;
+    }
+    // Set FD_CLOEXEC for childWR_parentRD pipe
+    fcntl(childWR_parentRD[0], F_SETFD, FD_CLOEXEC);
+    fcntl(childWR_parentRD[1], F_SETFD, FD_CLOEXEC);
+
+    // Fork the process to create a child process
+    int pid = fork();
+    if (pid == -1) { // fork fail
+        perror("fork failed");
+        close(childRD_parentWR[0]);
+        close(childRD_parentWR[1]);
+        close(childWR_parentRD[0]);
+        close(childWR_parentRD[1]);
+        return -1;
+    } else if (pid == 0) { // child
+        // Child process
+        close(childRD_parentWR[1]); // Close the write end of childRD_parentWR
+        close(childWR_parentRD[0]); // Close the read end of childWR_parentRD
+
+        // Redirect standard input and output to the designated file descriptors
+        if (dup2(childWR_parentRD[1], PARENT_READ_FD) == -1) { // 這邊會關掉current和原本parent的pipe fd，所以不用再用cloexec，之後adopt中main可能要補cloexec
+            perror("dup2 failed for PARENT_READ_FD");
+            _exit(1); //exit後所有fd都關掉，包含所有pipe都關掉，parent read 到 EOF，child結束，parent必須要wait child不然會變zombie
+        }
+        
+        if (dup2(childRD_parentWR[0], PARENT_WRITE_FD) == -1) {
+            perror("dup2 failed for PARENT_WRITE_FD");
+            _exit(1); // child 的 exit要有底線，因為要直接離開去kernel，不要碰到parent STD IO
+        }
+
+        // Close original pipe ends after duplicating
+        close(childWR_parentRD[1]);
+        close(childRD_parentWR[0]);
+
+        // Execute the same program to represent the child node process
+        if(execl("./friend", "friend", argmnt2, NULL)==-1){//argmnt2 is argument1, is child_info now
+            perror("execl failed"); // execl only returns on failure
+            _exit(1);
+        }
+        perror("unexpected error lead to child process fail");
+        _exit(1); // unexpected error
+    } else {
+        // Parent process
+        close(childRD_parentWR[0]); // Close the read end of childRD_parentWR
+        close(childWR_parentRD[1]); // Close the write end of childWR_parentRD
+
+        // Avoid child to become zombie process: 如果child 成功建成就會給一個child_process_ok_msg，如果失敗了child 會exit，parent要wait child
+        char buf[MAX_CMD_LEN] = {0};
+        if(read(PARENT_READ_FD, buf, sizeof(buf)) == EOF){
+            int status = 0;
+            if(waitpid(pid, &status, 0) == -1){
+                perror("Wait fail: Parent wait for the child fail.\n");
+            }
+        }
+        // Call the parser to split `argmnt2` into `meet_child_name` and `meet_child_value`
+        if (meet_child_parsor(argmnt2, child_name, child_value) == 0) {
+            printf("Child Name: %s, Child Value: %d\n", child_name, child_value);
+        } else {
+            printf("Error parsing child name and value.\n");
+        }
+
+        // Store child information in the parent’s data structure (if needed)
+        friend new_child;
+        new_child.pid = pid;
+        new_child.read_fd = childRD_parentWR[1];
+        new_child.write_fd = childWR_parentRD[0];
+        strncpy(new_child.name, child_name, MAX_FRIEND_NAME_LEN);
+        new_child.value = child_value;
+
+        // Assuming 'friends' array is used to store child nodes in order
+        if (next_empty_pos < MAX_CHILDREN) {
+            friends[*next_empty_pos++] = new_child;
+        } else {
+            fprintf(stderr, "Error: Maximum number of child nodes reached.\n");
+            close(childWR_parentRD[0]);
+            close(childRD_parentWR[1]);
+            return -1;
+        }
+
+        // Print success messages
+        if (strcmp(parent_name, "Not_Tako") == 0) {
+            print_direct_meet(child_name);
+        } else {
+            print_indirect_meet(parent_name, child_name);
+        }
+
+        return 0; // Success
+    }
+}
+
 /* terminate child pseudo code
 void clean_child(){
     close(child read_fd);
@@ -139,9 +250,15 @@ please do above 2 functions to save some time
 */
 
 int main(int argc, char *argv[]) {
-    char line[100];        // Buffer to hold each line read from stdin
+    char line[MAX_CMD_LEN];        // Buffer to hold each line read from stdin
     char child_name[MAX_FRIEND_NAME_LEN];
     int child_value;
+    int pid;
+    // will implement a circular queue
+    friend friends[8] = {0};
+    int start_pos; // for circular queue
+    int next_empty_pos; // for circular queue
+
     FILE* read_fp;
     FILE* write_fp;
 
@@ -169,8 +286,16 @@ int main(int argc, char *argv[]) {
         meet_child_parsor(argv[1], child_name, &child_value);
         strncpy(current_name, child_name, MAX_FRIEND_NAME_LEN);
         read_fp = fdopen(PARENT_READ_FD, "r"); // #define PARENT_READ_FD 3
+        fcntl(PARENT_READ_FD, F_SETFD, FD_CLOEXEC);// cloexec保證在執行exec時會關掉
         write_fp = fdopen(PARENT_WRITE_FD, "w"); // #define PARENT_WRITE_FD 4
+        fcntl(PARENT_WRITE_FD, F_SETFD, FD_CLOEXEC);
+
         friend_value = child_value;
+
+        if(write(PARENT_READ_FD, child_process_ok_msg, strlen(child_process_ok_msg)) != strlen(child_process_ok_msg)){
+            perror("Child process write to the pipe fail.\n");
+        }
+
     }
 
     // Read each line from STDIN until the end of input
@@ -179,8 +304,8 @@ int main(int argc, char *argv[]) {
         char argmnt1[15] = {0};      // To hold the first argument
         char argmnt2[15] = {0};      // To hold the second argument
         int item_read;
-        char meet_child_name[MAX_FRIEND_NAME_LEN] = {0};
-        int meet_child_value;
+        //char meet_child_name[MAX_FRIEND_NAME_LEN] = {0};
+        //int meet_child_value;
 
         // Determine which task is assigned based on task_type
         int task_no = task_parsor(line, task_type, argmnt1, argmnt2, &item_read);
@@ -188,11 +313,11 @@ int main(int argc, char *argv[]) {
         // Handle each task based on task_no and number of arguments read
         if (task_no == 41 && item_read == 3) { // Meet
             //printf("Executing 'Meet' with arguments: %s, %s\n", argmnt1, argmnt2);
-            // Call the parser to split `argmnt2` into `meet_child_name` and `meet_child_value`
-            if (meet_child_parsor(argmnt2, meet_child_name, &meet_child_value) == 0) {
-                printf("Child Name: %s, Child Value: %d\n", meet_child_name, meet_child_value);
+
+            if (Meet(argmnt1, friends, &next_empty_pos, argmnt2) != 0) {
+                print_fail_meet(argmnt1, child_name);
             } else {
-                printf("Error parsing child name and value.\n");
+                fprintf(stderr, "Error parsing child name and value.\n");
             }
 
             
