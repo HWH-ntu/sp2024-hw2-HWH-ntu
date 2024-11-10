@@ -48,6 +48,10 @@ static int current_value;    // current process value
 static char child_process_ok_msg[43] = "Child writes to parent: Child process OK!\n";
 static char meet_success_msg[29] = "Meet is successfully done!\n";
 static char meet_fail_msg[13]= "Meet fail.\n";
+static char check_findout_success_msg[26] = "Just check out the node.\n";
+static char check_findout_fail_msg[24] = "Cannot find this node.\n";
+static char check_has_output_msg[34] = "A node has printed out its name.\n";
+static char check_no_output_msg[35] = "No node has printed out its name.\n";
 
 // Is Root of tree
 static inline bool is_Root() {
@@ -121,12 +125,13 @@ int task_parsor(char* line, char* task_type, char* argmnt1, char* argmnt2, int* 
     if (strcmp(task_type, "Adopt") == 0) return 43;
     if (strcmp(task_type, "Graduate") == 0) return 44;
     if (strcmp(task_type, "Compare") == 0) return 45;
+    if (strcmp(task_type, "Check_Print") ==0) return 46;
     
     return -1; // Return -1 if task is not recognized
 }
 // Parses `argmnt2` into `meet_child_name` and `meet_child_value`
 int friendinfo_parsor(char* friend_info, char* child_name, int* child_value) {
-    char child_number[10];
+    char child_number[10] = {0};
     int token_read = sscanf(friend_info, "%[^_]_%s", child_name, child_number);
     
     if (token_read != 2) {
@@ -138,10 +143,10 @@ int friendinfo_parsor(char* friend_info, char* child_name, int* child_value) {
 }
 
 int Meet(char* parent_name, friend* friends, int* next_empty_pos, char* argmnt2) {//argmnt2 is child_info now
-    int childRD_parentWR[2];
-    int childWR_parentRD[2];
+    int childRD_parentWR[2] = {0};
+    int childWR_parentRD[2] = {0};
     char child_name[MAX_FRIEND_NAME_LEN] = {0};
-    int child_value;
+    int child_value = 0;
 
     // Create pipes for communication
     if (pipe(childRD_parentWR) == -1) {
@@ -163,7 +168,7 @@ int Meet(char* parent_name, friend* friends, int* next_empty_pos, char* argmnt2)
     fcntl(childWR_parentRD[1], F_SETFD, FD_CLOEXEC);
 
     // Fork the process to create a child process
-    const pid_t pid = fork();
+    const pid_t pid = fork(); // pid有自己的data type，不要用int
     if (pid == -1) { // fork fail
         perror("fork failed");
         close(childRD_parentWR[0]);
@@ -242,10 +247,40 @@ int Meet(char* parent_name, friend* friends, int* next_empty_pos, char* argmnt2)
         new_child.value = child_value;
 
         // Assuming 'friends' array is used to store child nodes in order
-        friends[(*next_empty_pos)%MAX_CHILDREN] = new_child;
+        friends[(*next_empty_pos)%MAX_QUEUE_SIZE] = new_child;
         (*next_empty_pos)++;
         return 0; // Success
     }
+}
+
+int check(char* argmnt1, friend* friends, int start_pos, int next_empty_pos){
+    //這邊是處理print，被找到的那個node會發出print1~print7給底下的node
+    //每經過一層child node會把print的數字減一。拿到print0的那個node會print
+    //要判斷前面那個node有沒有印出去決定要不要印空格
+    printf("%s\n", current_info); //被找到的那個人要印自己
+
+    for(int j=0;j<=7;j++){
+        int print_space = 0;
+        for (int i = start_pos%MAX_QUEUE_SIZE ; i != (next_empty_pos%MAX_QUEUE_SIZE) ; i = (i + 1) % MAX_QUEUE_SIZE){
+            char wr_buff[MAX_CMD_LEN]= {0};
+            snprintf(wr_buff, sizeof(wr_buff), "Check_Print %d %d\n", j, print_space);
+            if(write(friends[i].read_fd, wr_buff, strlen(wr_buff)) != strlen(wr_buff)){ // parent write to child node, child read，傳整行command下去
+                perror("For loop write down to child fail.\n");
+            }
+            //write給child後馬上read，去avoid race condition
+            char rd_buff[MAX_CMD_LEN] = {0};
+            if(read(friends[i].write_fd, rd_buff, sizeof(rd_buff))<0){ //parent要等child write一個訊息給他
+                perror("Read from child fail.\n");
+            }
+            if(strcmp(rd_buff, check_has_output_msg)==0 ){ //比較child 給的msg，node是不是已經印了
+                print_space = 1;
+            }
+        }
+        if(print_space == 1){ // 如果有印出，每行的最後要補\n
+            printf("\n");
+        }    
+    }
+    return 0;
 }
 
 /* terminate child pseudo code
@@ -266,12 +301,11 @@ please do above 2 functions to save some time
 */
 
 int main(int argc, char *argv[]) {
-    char line[MAX_CMD_LEN];        // Buffer to hold each line read from stdin
-    int pid;
+    char line[MAX_CMD_LEN] = {0};        // Buffer to hold each line read from stdin
     // will implement a circular queue
-    friend friends[8] = {0};
-    int start_pos; // for circular queue
-    int next_empty_pos; // for circular queue
+    friend friends[MAX_QUEUE_SIZE] = {0};
+    int start_pos = 0; // for circular queue
+    int next_empty_pos = 0; // for circular queue
 
     FILE* read_fp; // 這個process是要跟parent溝通的fd
 
@@ -312,7 +346,7 @@ int main(int argc, char *argv[]) {
         char task_type[MAX_CMD_LEN] = {0};    // To hold the task type
         char argmnt1[MAX_CMD_LEN] = {0};      // To hold the first argument
         char argmnt2[MAX_CMD_LEN] = {0};      // To hold the second argument
-        int item_read;
+        int item_read = 0;
         //char meet_child_name[MAX_FRIEND_NAME_LEN] = {0};
         //int meet_child_value;
 
@@ -340,7 +374,7 @@ int main(int argc, char *argv[]) {
             } else { // strcmp(current_name, argmnt1) != 0; argment1: parent_friend_name
                 // 這邊要做DFS，訊息要傳下去到circular queue裡的child node
                 bool Is_success = false;
-                for (int i = start_pos%MAX_CHILDREN ; i != (next_empty_pos%MAX_CHILDREN) ; i = (i + 1) % MAX_CHILDREN){
+                for (int i = start_pos%MAX_QUEUE_SIZE ; i != (next_empty_pos%MAX_QUEUE_SIZE) ; i = (i + 1) % MAX_QUEUE_SIZE){
                     if(write(friends[i].read_fd, line, strlen(line)) != strlen(line)){ // parent write to child node, child read，傳整行command下去
                         perror("For loop write down to child fail.\n");
                     }
@@ -372,11 +406,92 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-
-            
-        } else if (task_no == 42 && item_read == 2) { // Check
+        } else if (task_no == 42 && item_read == 2) { 
             //printf("Executing 'Check' with argument: %s\n", argmnt1);
-            
+            if (strcmp(current_name, argmnt1) == 0 ){ // 現在這個process如果就是argument1（除了root以外），要將成功作check的訊息傳上去，否則將訊息傳下去
+                if (check(argmnt1, friends, start_pos, next_empty_pos)==0) { // if check success, 那就往上傳消息
+                    if(!is_Root()){ // 除了root以外，都要將成功作check的訊息傳上去
+                        if(write(WRITE_TO_PARENT_FD ,check_findout_success_msg, strlen(check_findout_success_msg)) != strlen(check_findout_success_msg)){
+                            perror("Write check_findout_success_msg to parent fail.\n");
+                        }
+                    } 
+                } else { // Check Function Fail: check return -1
+                    perror("Check Fail: Check return -1.\n"); // “不是”沒有這個node存在，而是check失敗
+                }
+            } else { // strcmp(current_name, argmnt1) != 0; argment1: parent_friend_name
+                // 這邊要做DFS，訊息要傳下去到circular queue裡的child node
+                bool Is_success = false;
+                for (int i = start_pos%MAX_QUEUE_SIZE ; i != (next_empty_pos%MAX_QUEUE_SIZE) ; i = (i + 1) % MAX_QUEUE_SIZE){
+                    if(write(friends[i].read_fd, line, strlen(line)) != strlen(line)){ // parent write to child node, child read，傳整行command下去
+                        perror("For loop write down to child fail.\n");
+                    }
+                    char buf[MAX_CMD_LEN] = {0};
+                    if(read(friends[i].write_fd, buf, sizeof(buf)) <0){ //parent要等child write一個訊息給他
+                        perror("Read from child fail.\n");
+                    } 
+                    if(strcmp(buf, check_findout_success_msg)==0){ 
+                        if(!is_Root()){ //除了root以外要傳訊息上去
+                            if(write(WRITE_TO_PARENT_FD,check_findout_success_msg, strlen(check_findout_success_msg)) != strlen(check_findout_success_msg)){
+                                perror("Write check_findout_success_msg to parent fail.\n");
+                            }
+                        } 
+                        Is_success = true;
+                        break; //某個subtree的node已經處理完check，就不用再找下去
+                    }
+                } 
+                // current process的child 都沒有該process
+                // 給一個boolean
+                if(!Is_success){
+                    if(!is_Root()){
+                        if(write(WRITE_TO_PARENT_FD, check_findout_fail_msg, strlen(check_findout_fail_msg)) != strlen(check_findout_fail_msg)){
+                            perror("Write check_findout_fail_msg to parent fail.\n");
+                        }
+                    } else {
+                        print_fail_check(argmnt1);
+                    }
+                }
+            }
+        } else if(task_no == 46 && item_read == 3) { 
+            //這是Check_Print的command. argment1 是0~7 (print0~print7), argument2 是 1 or 0(有沒有要印space)
+            int arg1 = atoi(argmnt1);
+            int arg2 = atoi(argmnt2); //print_space
+
+            if(arg1 == 0){
+                if(arg2 == 1){
+                    printf(" ");
+                }
+                printf("%s",current_info);
+                if(write(WRITE_TO_PARENT_FD, check_has_output_msg, strlen(check_has_output_msg))<0){ //Line275
+                    perror("Write to parent check_has_output_msg fail.\n");
+                }
+            } else { // argmnt1 != 0
+                for (int i = start_pos%MAX_QUEUE_SIZE ; i != (next_empty_pos%MAX_QUEUE_SIZE) ; i = (i + 1) % MAX_QUEUE_SIZE){
+                    char buffer[MAX_CMD_LEN] = {0};
+                    snprintf(buffer, sizeof(buffer), "Check_Print %d %d\n", arg1 - 1, arg2);
+                    if(write(friends[i].read_fd, buffer, strlen(buffer)) != strlen(buffer)){ // parent write to child node, child read，傳整行command下去
+                        perror("For loop write down to child fail.\n");
+                    }
+                    char buf[MAX_CMD_LEN] = {0};
+                    if(read(friends[i].write_fd, buf, sizeof(buf)) <0){ // 去read descendent有沒有印出了
+                        //parent要等child write一個訊息給他
+                        perror("Read from child fail.\n");
+                    } 
+
+                    if(strcmp(buf, check_has_output_msg) ==0) {//統整
+                        arg2 = 1;//print_space = 1
+                    } 
+                }
+                //所有的child處理完後，去確定前面所有跑過的node（“不一定是其下的subtree，而是前面跑過已經變黑的那個node的結果的累積")是不是已經有output了
+                if(arg2 == 1){
+                    if(write(WRITE_TO_PARENT_FD, check_has_output_msg, strlen(check_has_output_msg))<0){
+                        perror("Write to parent check_has_output_msg fail.\n");
+                    }
+                } else {
+                    if(write(WRITE_TO_PARENT_FD, check_no_output_msg, strlen(check_no_output_msg))<0){
+                        perror("Write to parent check_no_output_msg fail.\n");
+                    }
+                }
+            }
         } else if (task_no == 43 && item_read == 3) { // Adopt
             //printf("Executing 'Adopt' with arguments: %s, %s\n", argmnt1, argmnt2);
             
