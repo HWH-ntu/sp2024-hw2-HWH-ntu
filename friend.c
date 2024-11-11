@@ -98,8 +98,6 @@ void print_final_graduate(){
     fprintf(stdout, "Congratulations! You've finished Not_Tako's annoying tasks!\n");
 }
 
-#include <string.h>
-
 void normalize_newline(char *line) {
     size_t len = strlen(line);
 
