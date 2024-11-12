@@ -55,6 +55,8 @@ static char check_no_output_msg[35] = "No node has printed out its name.\n";
 static char graduate_terminate_msg[33] = "There is node to be terminated.\n";
 static char graduate_NO_terminate_msg[36] = "There is NO node to be terminated.\n";
 static char graduate_parentwait_msg[28] = "Tell parent to wait child.\n";
+static char compare_findout_msg[35] = "The assigned node has been found.\n";
+static char compare_findfail_msg[39]= "The assigned node has not been found.\n";
 
 // Is Root of tree
 static inline bool is_Root() {
@@ -341,6 +343,7 @@ int main(int argc, char *argv[]) {
         //"Child process不知道read_fp是個pipe"
         read_fp = fdopen(READ_FROM_PARENT_FD, "r"); // Child read from parent 把fd開成3 #define PARENT_READ_FD 3
         fcntl(READ_FROM_PARENT_FD, F_SETFD, FD_CLOEXEC);// cloexec保證在執行exec時會關掉
+        fcntl(WRITE_TO_PARENT_FD, F_SETFD, FD_CLOEXEC);
         
         //Child 寫給 parent表示，這個child process有建成功
         if(write(WRITE_TO_PARENT_FD, child_process_ok_msg, strlen(child_process_ok_msg)) != strlen(child_process_ok_msg)){
@@ -580,7 +583,6 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
-                
             }       
         } 
         
@@ -611,11 +613,12 @@ int main(int argc, char *argv[]) {
             exit(0);
         } 
         
-        if (task_no == 45 && item_read == 3) { // Compare
-            //printf("Executing 'Compare' with arguments: %s, %s\n", argmnt1, argmnt2);
-            
-        } 
-
+        if (task_no == 45 && item_read == 3) { // Compare <argument1> <argument2> arg2被用char type讀取
+            // const int compare_number = atoi(argmnt2);
+            // printf("Executing 'Compare' with arguments: %s, %s\n", argmnt1, argmnt2);
+            // 先去找指定的node，找到之後去比較fifo內的數字，如果node的數字比較小，那麼其subtree的數字要*2%99
+            // 如果node的數字比較大，則其下的整棵subtree都被graduate
+        }
         // if(task_no not included in above numbers){
         //     //printf("Invalid task or incorrect number of arguments: %s", line);
         // }
